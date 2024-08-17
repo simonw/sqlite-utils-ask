@@ -1,0 +1,26 @@
+[project]
+name = "sqlite-utils-ask"
+version = "0.1"
+description = "Ask questions of your data with LLM assistance"
+readme = "README.md"
+authors = [{name = "Simon Willison"}]
+license = {text = "Apache-2.0"}
+classifiers = [
+    "License :: OSI Approved :: Apache Software License"
+]
+dependencies = [
+    "sqlite-utils",
+    "llm",
+]
+
+[project.urls]
+Homepage = "https://github.com/simonw/sqlite-utils-ask"
+Changelog = "https://github.com/simonw/sqlite-utils-ask/releases"
+Issues = "https://github.com/simonw/sqlite-utils-ask/issues"
+CI = "https://github.com/simonw/sqlite-utils-ask/actions"
+
+[project.entry-points.sqlite_utils]
+ask = "sqlite_utils_ask"
+
+[project.optional-dependencies]
+test = ["pytest"]
