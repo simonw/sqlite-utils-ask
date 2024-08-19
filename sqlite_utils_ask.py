@@ -16,7 +16,8 @@ def register_commands(cli):
     )
     @click.argument("question")
     @click.option("model_id", "-m", "--model", help="LLM model to use")
-    def ask(path, question, model_id):
+    @click.option("-v", "--verbose", is_flag=True, help="Verbose output")
+    def ask(path, question, model_id, verbose):
         "Ask a question of your data"
         db = sqlite_utils.Database(path)
         schema = db.schema
@@ -38,6 +39,8 @@ def register_commands(cli):
         model = llm.get_model(model_id)
         response = model.prompt(schema + "\n\n" + question, system=system)
         sql = extract_sql_query(response.text())
+        if verbose:
+            click.echo(sql, err=True)
         if not sql:
             raise click.ClickException(
                 "Failed to generate a response:\n\n" + response.text()
