@@ -1,6 +1,6 @@
 [project]
 name = "sqlite-utils-ask"
-version = "0.1"
+version = "0.1a0"
 description = "Ask questions of your data with LLM assistance"
 readme = "README.md"
 authors = [{name = "Simon Willison"}]
