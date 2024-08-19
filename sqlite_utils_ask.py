@@ -37,21 +37,59 @@ def register_commands(cli):
         if not model_id:
             model_id = "gpt-4o-mini"
         model = llm.get_model(model_id)
-        response = model.prompt(schema + "\n\n" + question, system=system)
+        conversation = model.conversation()
+        response = conversation.prompt(schema + "\n\n" + question, system=system)
         sql = extract_sql_query(response.text())
-        if verbose:
-            click.echo(sql, err=True)
         if not sql:
-            raise click.ClickException(
-                "Failed to generate a response:\n\n" + response.text()
+            # Try one more time
+            if verbose:
+                click.echo(
+                    "First attempt did not return SQL:\n" + response.text(), err=True
+                )
+                click.echo("Trying a second time", err=True)
+            response2 = conversation.prompt(
+                "Return the SQL query like this:\n```sql\nSELECT ...\n```"
             )
-        results = list(db.query(sql))
-        print(json.dumps({"sql": sql, "results": results}, indent=4, default=repr))
+            sql = extract_sql_query(response2.text())
+            if not sql:
+                raise click.ClickException(
+                    "Failed to generate a response:\n\n" + response.text()
+                )
+        # Try this up to three times
+        attempt = 0
+        ok = False
+        while attempt < 3:
+            if verbose:
+                if attempt > 0:
+                    click.echo(f"Trying again, attempt {attempt + 1}", err=True)
+                click.echo(sql, err=True)
+            try:
+                results = list(db.query(sql))
+                ok = True
+                break
+            except Exception as ex:
+                if verbose:
+                    click.echo(str(ex), err=True)
+                sql = extract_sql_query(
+                    conversation.prompt(f"Got this error: {str(ex)} - try again").text()
+                )
+            attempt += 1
+
+        if ok:
+            click.echo(
+                json.dumps({"sql": sql, "results": results}, indent=4, default=repr)
+            )
+        else:
+            click.echo(f"Failed after {attempt} attempts", err=True)
+            if verbose:
+                click.echo(conversation.responses, err=True)
+
+
+_pattern = r"```sql\n(.*?)\n```"
 
 
 def extract_sql_query(text):
-    pattern = r"```sql\n(.*?)\n```"
-    match = re.search(pattern, text, re.DOTALL)
+    match = re.search(_pattern, text, re.DOTALL)
     if match:
         return match.group(1).strip()
     else:
