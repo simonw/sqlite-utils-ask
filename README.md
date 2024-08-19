@@ -15,7 +15,12 @@ sqlite-utils install sqlite-utils-ask
 ```
 ## Usage
 
-Usage instructions go here.
+Ask questions of your database like this:
+
+```bash
+sqlite-utils ask content.db 'How many repos?'
+```
+The tool will use an LLM (`gpt-4o-mini` by default) to generate the appropriate SQL query by passing through your question and the database schema, and will then execute the query and return the result.
 
 ## Development
 
