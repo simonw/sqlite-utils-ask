@@ -18,7 +18,8 @@ def register_commands(cli):
     @click.argument("question")
     @click.option("model_id", "-m", "--model", help="LLM model to use")
     @click.option("-v", "--verbose", is_flag=True, help="Verbose output")
-    def ask(path, question, model_id, verbose):
+    @click.option("-p", "--prose", is_flag=True, help="Provide an answer in prose")
+    def ask(path, question, model_id, verbose, prose):
         "Ask a question of your data"
         # Open in read-only mode
         conn = sqlite3.connect("file:{}?mode=ro".format(str(path)), uri=True)
@@ -93,6 +94,15 @@ def register_commands(cli):
             click.echo(f"Failed after {attempt} attempts", err=True)
             if verbose:
                 click.echo(conversation.responses, err=True)
+
+        if prose:
+            prompt = sql + "\n\n"
+            prompt = "Given these results from that SQL query:\n\n"
+            prompt += json.dumps(results, indent=4, default=repr)
+            prompt += "\n\nAnswer the user's question: " + question
+            for token in model.prompt(prompt):
+                print(token, end="")
+            print()
 
 
 _pattern = r"```sql\n(.*?)\n```"
