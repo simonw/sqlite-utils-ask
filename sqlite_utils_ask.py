@@ -1,6 +1,7 @@
 import click
 import json
 import re
+import sqlite3
 import sqlite_utils
 import textwrap
 
@@ -19,7 +20,9 @@ def register_commands(cli):
     @click.option("-v", "--verbose", is_flag=True, help="Verbose output")
     def ask(path, question, model_id, verbose):
         "Ask a question of your data"
-        db = sqlite_utils.Database(path)
+        # Open in read-only mode
+        conn = sqlite3.connect("file:{}?mode=ro".format(str(path)), uri=True)
+        db = sqlite_utils.Database(conn)
         schema = db.schema
         system = textwrap.dedent(
             """
@@ -39,6 +42,8 @@ def register_commands(cli):
         model = llm.get_model(model_id)
         conversation = model.conversation()
         response = conversation.prompt(schema + "\n\n" + question, system=system)
+        if verbose:
+            click.echo(response.text(), err=True)
         sql = extract_sql_query(response.text())
         if not sql:
             # Try one more time
@@ -50,6 +55,8 @@ def register_commands(cli):
             response2 = conversation.prompt(
                 "Return the SQL query like this:\n```sql\nSELECT ...\n```"
             )
+            if verbose:
+                click.echo(response2.text(), err=True)
             sql = extract_sql_query(response2.text())
             if not sql:
                 raise click.ClickException(
@@ -70,9 +77,12 @@ def register_commands(cli):
             except Exception as ex:
                 if verbose:
                     click.echo(str(ex), err=True)
-                sql = extract_sql_query(
-                    conversation.prompt(f"Got this error: {str(ex)} - try again").text()
+                response3 = conversation.prompt(
+                    f"Got this error: {str(ex)} - try again"
                 )
+                if verbose:
+                    click.echo(response3.text(), err=True)
+                sql = extract_sql_query(response3.text())
             attempt += 1
 
         if ok:
