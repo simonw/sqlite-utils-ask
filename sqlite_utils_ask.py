@@ -22,7 +22,7 @@ def register_commands(cli):
         schema = db.schema
         system = textwrap.dedent(
             """
-        You will be given a SQLite schema followed by a question. Generate a SQL
+        You will be given a SQLite schema followed by a question. Generate a single SQL
         query to answer that question. Return that query in a ```sql ... ```
         fenced code block.
                                  
