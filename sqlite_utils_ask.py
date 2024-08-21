@@ -54,7 +54,8 @@ def register_commands(cli):
     @click.option(
         "-e", "--examples", is_flag=True, help="Send example column values to the model"
     )
-    def ask(path, question, model_id, verbose, examples):
+    @click.option("json_", "-j", "--json", is_flag=True, help="Output as JSON")
+    def ask(path, question, model_id, verbose, examples, json_):
         "Ask a question of your data"
         # Open in read-only mode
         conn = sqlite3.connect("file:{}?mode=ro".format(str(path)), uri=True)
@@ -114,9 +115,14 @@ def register_commands(cli):
             attempt += 1
 
         if ok:
-            click.echo(
-                json.dumps({"sql": sql, "results": results}, indent=4, default=repr)
-            )
+            if json_:
+                click.echo(
+                    json.dumps({"sql": sql, "results": results}, indent=4, default=repr)
+                )
+            else:
+                # Plain text output
+                click.echo(sql.strip() + "\n")
+                click.echo(json.dumps(results, indent=4, default=repr))
         else:
             click.echo(f"Failed after {attempt} attempts", err=True)
             if verbose:
