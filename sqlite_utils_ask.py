@@ -125,7 +125,12 @@ def extract_sql_query(text):
 
 def get_example_columns(db, table):
     examples = {}
-    for column, type in db[table].columns_dict.items():
+    try:
+        column_types = db[table].columns_dict.items()
+    except sqlite3.OperationalError:
+        # Probably a vec0 table or similar
+        return {}
+    for column, type in column_types:
         if type is not str:
             continue
         # Figure out average length
