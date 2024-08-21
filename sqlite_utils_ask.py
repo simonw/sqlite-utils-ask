@@ -18,7 +18,10 @@ def register_commands(cli):
     @click.argument("question")
     @click.option("model_id", "-m", "--model", help="LLM model to use")
     @click.option("-v", "--verbose", is_flag=True, help="Verbose output")
-    def ask(path, question, model_id, verbose):
+    @click.option(
+        "-e", "--examples", is_flag=True, help="Send example column values to the model"
+    )
+    def ask(path, question, model_id, verbose, examples):
         "Ask a question of your data"
         # Open in read-only mode
         conn = sqlite3.connect("file:{}?mode=ro".format(str(path)), uri=True)
@@ -41,6 +44,20 @@ def register_commands(cli):
             model_id = "gpt-4o-mini"
         model = llm.get_model(model_id)
         conversation = model.conversation()
+        prompt = schema + "\n\n"
+        if examples:
+            # Include 5 examples for each text column that averages < 32 characters
+            examples_for_tables = {}
+            for table in db.table_names():
+                examples_for_tables[table] = get_example_columns(db, table)
+            prompt += (
+                "Example values:\n\n"
+                + json.dumps(examples_for_tables, indent=4, default=repr)
+                + "\n\n"
+            )
+            if verbose:
+                click.echo(prompt, err=True)
+        prompt += question
         response = conversation.prompt(schema + "\n\n" + question, system=system)
         if verbose:
             click.echo(response.text(), err=True)
@@ -104,3 +121,44 @@ def extract_sql_query(text):
         return match.group(1).strip()
     else:
         return None
+
+
+def get_example_columns(db, table):
+    examples = {}
+    try:
+        column_types = db[table].columns_dict.items()
+    except sqlite3.OperationalError:
+        # Probably a vec0 table or similar
+        return {}
+    for column, type in column_types:
+        if type is not str:
+            continue
+        # Figure out average length
+        avg = (
+            next(
+                db.query(
+                    f"""
+            select avg(length("{column}")) as a
+            from "{table}"
+        """
+                )
+            )["a"]
+            or 0
+        )
+        if avg < 32:
+            examples[column] = [
+                row["e"]
+                for row in db.query(
+                    f"""
+                    select distinct "{column}" as e from (
+                        -- Consider only first 1000 rows
+                        select "{column}" from "{table}" limit 1000
+                    )
+                    where
+                        "{column}" is not null
+                        and "{column}" != ''
+                    limit 5
+                """
+                )
+            ]
+    return examples
