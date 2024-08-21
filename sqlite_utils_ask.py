@@ -4,6 +4,39 @@ import re
 import sqlite3
 import sqlite_utils
 import textwrap
+from typing import Tuple
+
+SYSTEM = """
+You will be given a SQLite schema followed by a question. Generate a single SQL
+query to answer that question. Return that query in a ```sql ... ```
+fenced code block.
+
+Example: How many repos are there?
+Answer:
+```sql
+select count(*) from repos
+```
+""".strip()
+
+
+def build_prompt(
+    conn: sqlite3.Connection, question: str, examples: bool
+) -> Tuple[str, str]:
+    db = sqlite_utils.Database(conn)
+    schema = db.schema
+    prompt = schema + "\n\n"
+    if examples:
+        # Include 5 examples for each text column that averages < 32 characters
+        examples_for_tables = {}
+        for table in db.table_names():
+            examples_for_tables[table] = get_example_columns(db, table)
+        prompt += (
+            "Example values:\n\n"
+            + json.dumps(examples_for_tables, indent=4, default=repr)
+            + "\n\n"
+        )
+    prompt += question
+    return prompt, SYSTEM
 
 
 @sqlite_utils.hookimpl
@@ -26,39 +59,17 @@ def register_commands(cli):
         # Open in read-only mode
         conn = sqlite3.connect("file:{}?mode=ro".format(str(path)), uri=True)
         db = sqlite_utils.Database(conn)
-        schema = db.schema
-        system = textwrap.dedent(
-            """
-        You will be given a SQLite schema followed by a question. Generate a single SQL
-        query to answer that question. Return that query in a ```sql ... ```
-        fenced code block.
-                                 
-        Example: How many repos are there?
-        Answer:
-        ```sql
-        select count(*) from repos
-        ```
-        """
-        )
         if not model_id:
             model_id = "gpt-4o-mini"
         model = llm.get_model(model_id)
         conversation = model.conversation()
-        prompt = schema + "\n\n"
-        if examples:
-            # Include 5 examples for each text column that averages < 32 characters
-            examples_for_tables = {}
-            for table in db.table_names():
-                examples_for_tables[table] = get_example_columns(db, table)
-            prompt += (
-                "Example values:\n\n"
-                + json.dumps(examples_for_tables, indent=4, default=repr)
-                + "\n\n"
-            )
-            if verbose:
-                click.echo(prompt, err=True)
-        prompt += question
-        response = conversation.prompt(schema + "\n\n" + question, system=system)
+        prompt, system = build_prompt(conn, question, examples)
+        if verbose:
+            click.echo("System prompt:", err=True)
+            click.echo(system, err=True)
+            click.echo("Prompt:", err=True)
+            click.echo(prompt, err=True)
+        response = conversation.prompt(prompt, system=system)
         if verbose:
             click.echo(response.text(), err=True)
         sql = extract_sql_query(response.text())
@@ -70,7 +81,7 @@ def register_commands(cli):
                 )
                 click.echo("Trying a second time", err=True)
             response2 = conversation.prompt(
-                "Return the SQL query like this:\n```sql\nSELECT ...\n```"
+                "Return the SQL query like this:\n```sql\nselect ...\n```"
             )
             if verbose:
                 click.echo(response2.text(), err=True)
