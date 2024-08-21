@@ -105,7 +105,7 @@ def register_commands(cli):
                 break
             except Exception as ex:
                 if verbose:
-                    click.echo(str(ex), err=True)
+                    click.echo("\nError:\n    " + str(ex) + "\n", err=True)
                 response3 = conversation.prompt(
                     f"Got this error: {str(ex)} - try again"
                 )
@@ -120,13 +120,11 @@ def register_commands(cli):
                     json.dumps({"sql": sql, "results": results}, indent=4, default=repr)
                 )
             else:
-                # Plain text output
+                # Plain output
                 click.echo(sql.strip() + "\n")
                 click.echo(json.dumps(results, indent=4, default=repr))
         else:
-            click.echo(f"Failed after {attempt} attempts", err=True)
-            if verbose:
-                click.echo(conversation.responses, err=True)
+            raise click.ClickException(f"Failed after {attempt} attempts")
 
 
 _pattern = r"```sql\n(.*?)\n```"
