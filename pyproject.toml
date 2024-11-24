@@ -9,7 +9,7 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License"
 ]
 dependencies = [
-    "sqlite-utils",
+    "sqlite-utils>=3.38",
     "llm",
 ]
 

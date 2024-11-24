@@ -28,3 +28,24 @@ def test_ask(monkeypatch):
         assert result.exit_code == 0
         assert "3" in result.output
         assert "count(*)" in result.output.lower()
+
+
+@pytest.mark.vcr
+def test_ask_files(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", API_KEY)
+    with CliRunner().isolated_filesystem():
+        open("dogs.csv", "w").write("name\nCleo\nPancakes\nJasper\n")
+        open("cats.json", "w").write('[{"name": "Gregory"}, {"name": "Tom"}]')
+        result = CliRunner().invoke(
+            cli,
+            [
+                "ask-files",
+                "dogs.csv",
+                "cats.json",
+                "add together number of dogs and cats",
+                "-v",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "5" in result.output
+        assert "count(*)" in result.output.lower()
