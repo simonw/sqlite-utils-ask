@@ -38,3 +38,8 @@ To run the tests:
 ```bash
 python -m pytest
 ```
+To capture new HTTP interactions, run:
+```bash
+PYTEST_OPENAI_API_KEY=your-key python -m pytest --record-mode once
+```
+Or use `--record-mode all` to re-record all interactions.
