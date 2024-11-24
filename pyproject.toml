@@ -23,4 +23,4 @@ CI = "https://github.com/simonw/sqlite-utils-ask/actions"
 ask = "sqlite_utils_ask"
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = ["pytest", "pytest-recording"]
