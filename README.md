@@ -13,14 +13,27 @@ Install this plugin in the same environment as sqlite-utils.
 ```bash
 sqlite-utils install sqlite-utils-ask
 ```
-## Usage
+## sqlite-utils ask
 
-Ask questions of your database like this:
+Ask questions of a SQLite database file like this:
 
 ```bash
 sqlite-utils ask content.db 'How many repos?'
 ```
 The tool will use an LLM (`gpt-4o-mini` by default) to generate the appropriate SQL query by passing through your question and the database schema, and will then execute the query and return the result.
+
+## sqlite-utils ask-files
+
+You can also ask questions directly of CSV, TSV or JSON files. These will be imported into an in-memory SQLite database prior to running the query.
+
+```bash
+sqlite-utils ask-files data.csv 'How many repos?'
+```
+You can pass multiple files and run queries across multiple resulting tables.
+
+```bash
+sqlite-utils ask-files legislators.csv votes.csv 'How many votes did each legislator cast?'
+```
 
 ## Development
 
