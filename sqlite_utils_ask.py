@@ -17,9 +17,30 @@ select count(*) from repos
 ```
 """.strip()
 
+SYSTEM_WRITE = """
+You will be given a SQLite schema followed by a task. Generate one or more SQL
+queries to be executed in order to complete that task. The last one should be
+a SELECT that helps demonstrate that the task was completed.
+
+Wrap each query in a ```sql ... ``` fenced code block.
+
+Example: Insert a row for a dog called Cleo and update cat Jerry to have age 5
+
+Answer:
+```sql
+insert into pets (name, species) values ('Cleo', 'dog')
+```
+```sql
+update pets set age = 5 where name = 'Jerry'
+```
+```sql
+select * from pets where name in ('Cleo', 'Jerry')
+```
+""".strip()
+
 
 def build_prompt(
-    conn: sqlite3.Connection, question: str, examples: bool
+    conn: sqlite3.Connection, question: str, examples: bool, write: bool
 ) -> Tuple[str, str]:
     db = sqlite_utils.Database(conn)
     schema = db.schema
@@ -35,7 +56,7 @@ def build_prompt(
             + "\n\n"
         )
     prompt += question
-    return prompt, SYSTEM
+    return prompt, SYSTEM_WRITE if write else SYSTEM
 
 
 def copy_params_as_decorators(source_command, only=None):
@@ -119,27 +140,33 @@ def register_commands(cli):
     )
     @click.argument("question")
     @click.option("model_id", "-m", "--model", help="LLM model to use")
+    @click.option(
+        "write", "-w", "--write", is_flag=True, help="Allow SQL write operations"
+    )
     @click.option("-v", "--verbose", is_flag=True, help="Verbose output")
     @click.option(
         "-e", "--examples", is_flag=True, help="Send example column values to the model"
     )
     @click.option("json_", "-j", "--json", is_flag=True, help="Output as JSON")
-    def ask(path, question, model_id, verbose, examples, json_):
+    def ask(path, question, model_id, write, verbose, examples, json_):
         "Ask a question of your data"
         # Open in read-only mode
-        conn = sqlite3.connect("file:{}?mode=ro".format(str(path)), uri=True)
-        db = sqlite_utils.Database(conn)
-        _shared_ask(db, question, model_id, verbose, examples, json_)
+        if write:
+            db = sqlite_utils.Database(path)
+        else:
+            conn = sqlite3.connect("file:{}?mode=ro".format(str(path)), uri=True)
+            db = sqlite_utils.Database(conn)
+        _shared_ask(db, question, model_id, verbose, examples, json_, write=write)
 
 
-def _shared_ask(db, question, model_id, verbose, examples, json_):
+def _shared_ask(db, question, model_id, verbose, examples, json_, write=False):
     import llm
 
     if not model_id:
         model_id = "gpt-4o-mini"
     model = llm.get_model(model_id)
     conversation = model.conversation()
-    prompt, system = build_prompt(db.conn, question, examples)
+    prompt, system = build_prompt(db.conn, question, examples, write)
     if verbose:
         click.echo("System prompt:", err=True)
         click.echo(system, err=True)
@@ -148,8 +175,8 @@ def _shared_ask(db, question, model_id, verbose, examples, json_):
     response = conversation.prompt(prompt, system=system)
     if verbose:
         click.echo(response.text(), err=True)
-    sql = extract_sql_query(response.text())
-    if not sql:
+    sqls = extract_sql_queries(response.text())
+    if not sqls:
         # Try one more time
         if verbose:
             click.echo(
@@ -161,40 +188,50 @@ def _shared_ask(db, question, model_id, verbose, examples, json_):
         )
         if verbose:
             click.echo(response2.text(), err=True)
-        sql = extract_sql_query(response2.text())
-        if not sql:
+        sqls = extract_sql_queries(response2.text())
+        if not sqls:
             raise click.ClickException(
                 "Failed to generate a response:\n\n" + response.text()
             )
     # Try this up to three times
     attempt = 0
     ok = False
+    broken = False
     while attempt < 3:
-        if verbose:
-            if attempt > 0:
-                click.echo(f"Trying again, attempt {attempt + 1}", err=True)
-            click.echo(sql, err=True)
-        try:
-            results = list(db.query(sql))
-            ok = True
+        if broken:
             break
-        except Exception as ex:
-            if verbose:
-                click.echo("\nError:\n    " + str(ex) + "\n", err=True)
-            response3 = conversation.prompt(f"Got this error: {str(ex)} - try again")
-            if verbose:
-                click.echo(response3.text(), err=True)
-            sql = extract_sql_query(response3.text())
+        for sql in sqls:
+            if verbose or write:
+                if attempt > 0:
+                    click.echo(f"Trying again, attempt {attempt + 1}", err=True)
+                click.echo(sql, err=True)
+                if write and not sql.lower().startswith("select"):
+                    click.confirm("Execute this SQL?", abort=True)
+            try:
+                results = list(db.query(sql))
+                ok = True
+                broken = True
+                break
+            except Exception as ex:
+                if verbose or write:
+                    click.echo("\nError:\n    " + str(ex) + "\n", err=True)
+                response3 = conversation.prompt(
+                    f"Got this error: {str(ex)} - try again"
+                )
+                if verbose:
+                    click.echo(response3.text(), err=True)
+                sql = extract_sql_queries(response3.text())[0]
         attempt += 1
 
     if ok:
         if json_:
             click.echo(
-                json.dumps({"sql": sql, "results": results}, indent=4, default=repr)
+                json.dumps({"sqls": sqls, "results": results}, indent=4, default=repr)
             )
         else:
             # Plain output
-            click.echo(sql.strip() + "\n")
+            for sql in sqls:
+                click.echo(sql.strip() + "\n")
             click.echo(json.dumps(results, indent=4, default=repr))
     else:
         raise click.ClickException(f"Failed after {attempt} attempts")
@@ -203,12 +240,9 @@ def _shared_ask(db, question, model_id, verbose, examples, json_):
 _pattern = r"```sql\n(.*?)\n```"
 
 
-def extract_sql_query(text):
-    match = re.search(_pattern, text, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    else:
-        return None
+def extract_sql_queries(text):
+    matches = re.findall(_pattern, text, re.DOTALL)
+    return [match.strip() for match in matches] if matches else []
 
 
 def get_example_columns(db, table):
