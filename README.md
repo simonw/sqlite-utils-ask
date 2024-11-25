@@ -7,6 +7,8 @@
 
 Ask questions of your data with LLM assistance
 
+See [Ask questions of SQLite databases and CSV/JSON files in your terminal](https://simonwillison.net/2024/Nov/25/ask-questions-of-sqlite/) for background on this project.
+
 ## Installation
 
 Install this plugin in the same environment as sqlite-utils.
